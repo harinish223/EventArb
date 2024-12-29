@@ -1,0 +1,142 @@
+import numpy as np
+import logging
+
+# Step 1: Setup logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
+# Step 2: Define constants and input data
+total_capital = 100000  # Example total capital
+
+def parse_event_markets(data, platform):
+    events_with_markets = []
+    for event in data:
+        event_id = event['ticker'] if platform == 'Kalshi' else event['id']
+        title = event['title'] if platform == 'Kalshi' else event['question']
+        expiry = event['expiry'] if platform == 'Kalshi' else event['expiration_time']
+
+        for market in event['markets']:
+            market_id = market['market_id']
+            yes_price = market['yes_bid'] if platform == 'Kalshi' else market['yes_price']
+            no_price = market['no_bid'] if platform == 'Kalshi' else market['no_price']
+
+            events_with_markets.append({
+                'event_id': event_id,
+                'market_id': market_id,
+                'title': title,
+                'expiry': expiry,
+                'yes_price': yes_price,
+                'no_price': no_price,
+                'platform': platform
+            })
+    return events_with_markets
+
+# Step 3: Check for Arbitrage Opportunities
+def find_arbitrage_opportunities(events_with_markets):
+    arbitrage_opportunities = []
+    for event in events_with_markets:
+        yes_price = event['yes_price']
+        no_price = event['no_price']
+
+        # Arbitrage Condition: Yes + No < 1
+        if yes_price + no_price < 1:
+            arbitrage_opportunities.append({
+                'event_id': event['event_id'],
+                'market_id': event['market_id'],
+                'platform': event['platform'],
+                'yes_price': yes_price,
+                'no_price': no_price,
+                'potential_profit': 1 - (yes_price + no_price),
+                'expiry': event['expiry']
+            })
+    return arbitrage_opportunities
+
+# Step 4: Calculate Annualized ROI for Arbitrage Opportunities
+def calculate_annualized_roi_for_arbitrage(opportunities):
+    for opp in opportunities:
+        days_to_expiry = (np.datetime64(opp['expiry']) - np.datetime64('today')).astype(int)
+        profit = opp['potential_profit'] * total_capital
+        opp['annualized_roi'] = (profit / total_capital) * (365 / days_to_expiry)
+    return opportunities
+
+# Step 5: Allocate Capital Based on ROI
+def allocate_capital(opportunities):
+    total_allocation = 0
+    for opp in opportunities:
+        if opp['annualized_roi'] > 0.2:
+            opp['allocated_capital'] = total_capital * 0.3  # High ROI
+        elif 0.1 < opp['annualized_roi'] <= 0.2:
+            opp['allocated_capital'] = total_capital * 0.2  # Medium ROI
+        else:
+            opp['allocated_capital'] = total_capital * 0.1  # Low ROI
+
+        total_allocation += opp['allocated_capital']
+
+        # Divide equally across Kalshi and Polymarket
+        opp['kalshi_allocation'] = opp['allocated_capital'] / 2
+        opp['polymarket_allocation'] = opp['allocated_capital'] / 2
+
+    return opportunities
+
+# Step 6: Execute Trades
+def execute_trades(opportunities):
+    for opp in opportunities:
+        if opp['allocated_capital'] > 0:
+            try:
+                logging.info(f"Placing trade for {opp['event_id']} with Kalshi allocation: {opp['kalshi_allocation']} and Polymarket allocation: {opp['polymarket_allocation']}")
+                # Placeholder for API integration
+                success_kalshi = True  # Mocking a successful trade
+                success_polymarket = True  # Mocking a successful trade
+
+                if not (success_kalshi and success_polymarket):
+                    raise Exception("Trade failed on one or more platforms.")
+            except Exception as e:
+                logging.error(f"Error executing trade for {opp['event_id']}: {e}")
+                opp['allocated_capital'] = 0
+                opp['kalshi_allocation'] = 0
+                opp['polymarket_allocation'] = 0
+
+# Main execution flow
+kalshi_data = [
+    {
+        "ticker": "EVT_1234",
+        "title": "Will it rain in New York on January 1st?",
+        "expiry": "2024-01-01T23:59:59Z",
+        "markets": [
+            {"market_id": "MARKET_1", "yes_bid": 0.45, "no_bid": 0.55},
+            {"market_id": "MARKET_2", "yes_bid": 0.65, "no_bid": 0.35}
+        ]
+    }
+]
+
+polymarket_data = [
+    {
+        "id": "EVT_5678",
+        "question": "Will Bitcoin exceed $30,000 by January 1st?",
+        "expiration_time": "2024-01-01T23:59:59Z",
+        "markets": [
+            {"market_id": "MARKET_1", "yes_price": 0.55, "no_price": 0.45},
+            {"market_id": "MARKET_2", "yes_price": 0.4, "no_price": 0.6}
+        ]
+    }
+]
+
+# Parse markets
+kalshi_markets = parse_event_markets(kalshi_data, 'Kalshi')
+polymarket_markets = parse_event_markets(polymarket_data, 'Polymarket')
+
+# Combine markets and find arbitrage
+all_markets = kalshi_markets + polymarket_markets
+arbitrage_opportunities = find_arbitrage_opportunities(all_markets)
+logging.info(f"Arbitrage Opportunities: {arbitrage_opportunities}")
+
+# Calculate ROI and allocate capital
+arbitrage_opportunities = calculate_annualized_roi_for_arbitrage(arbitrage_opportunities)
+arbitrage_opportunities = allocate_capital(arbitrage_opportunities)
+
+# Execute trades
+execute_trades(arbitrage_opportunities)
+
+# Output final trade allocations and execution status
+logging.info("Final Arbitrage Trade Allocations:")
+for opp in arbitrage_opportunities:
+    logging.info(f"Event: {opp['event_id']}, Market: {opp['market_id']}, Kalshi Allocation: {opp['kalshi_allocation']}, Polymarket Allocation: {opp['polymarket_allocation']}, Annualized ROI: {opp['annualized_roi']}")
